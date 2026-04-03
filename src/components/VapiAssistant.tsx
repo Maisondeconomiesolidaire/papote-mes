@@ -104,6 +104,9 @@ export default function VapiAssistant() {
         clerkUserId: u?.id,
         airtableRecordId: cachedRecordIdRef.current,
       },
+      server: {
+        url: `${window.location.origin}/api/vapi/webhook`,
+      },
     });
   }, [prefetchProfile]);
 
