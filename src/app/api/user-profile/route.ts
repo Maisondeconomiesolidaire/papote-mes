@@ -53,5 +53,7 @@ export async function GET() {
     `Événements : ${fields["Evenements"] || "Non renseigné"}`,
   ].join("\n");
 
-  return NextResponse.json({ profile, recordId: record.id });
+  const firstName = fields["Prénom"] || "";
+
+  return NextResponse.json({ profile, recordId: record.id, firstName });
 }

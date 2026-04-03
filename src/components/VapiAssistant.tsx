@@ -27,6 +27,7 @@ export default function VapiAssistant() {
   userRef.current = user;
   const cachedProfileRef = useRef<string | null>(null);
   const cachedRecordIdRef = useRef<string | null>(null);
+  const cachedFirstNameRef = useRef<string>("");
 
   const stopListening = useCallback(() => {
     const recognizer = recognizerRef.current;
@@ -76,6 +77,7 @@ export default function VapiAssistant() {
         const data = await res.json();
         cachedProfileRef.current = data.profile || "";
         cachedRecordIdRef.current = data.recordId || null;
+        cachedFirstNameRef.current = data.firstName || "";
       }
     } catch (err) {
       console.error("Failed to prefetch user profile:", err);
@@ -96,7 +98,7 @@ export default function VapiAssistant() {
     vapiRef.current?.start(ASSISTANT_ID, {
       variableValues: {
         userProfile,
-        userName: u?.fullName ?? u?.firstName ?? "",
+        userName: cachedFirstNameRef.current,
       },
       metadata: {
         clerkUserId: u?.id,
