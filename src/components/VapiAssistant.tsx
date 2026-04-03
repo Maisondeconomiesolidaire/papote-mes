@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useUser } from "@clerk/nextjs";
 import Vapi from "@vapi-ai/web";
+import AudioVisualizer from "./AudioVisualizer";
 
 const ASSISTANT_ID = process.env.NEXT_PUBLIC_VAPI_ASSISTANT_ID!;
 const PUBLIC_API_KEY = process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY!;
@@ -17,6 +18,8 @@ export default function VapiAssistant() {
   const { user } = useUser();
   const [status, setStatus] = useState<Status>("loading");
   const [errorMsg, setErrorMsg] = useState("");
+  const [volume, setVolume] = useState(0);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const vapiRef = useRef<Vapi | null>(null);
   const recognizerRef = useRef<any>(null);
   const isCallActiveRef = useRef(false);
@@ -51,7 +54,7 @@ export default function VapiAssistant() {
         const score = result.scores[wakeWordIndex];
         if (score > CONFIDENCE_THRESHOLD && !isCallActiveRef.current) {
           console.log("🎤 Wake word detected with confidence:", score);
-          isCallActiveRef.current = true; // prevent duplicate triggers
+          isCallActiveRef.current = true;
           recognizer.stopListening();
           startVapiCall();
         }
@@ -81,7 +84,6 @@ export default function VapiAssistant() {
 
   const startVapiCall = useCallback(async () => {
     const u = userRef.current;
-    // Use cached profile or fetch if not ready
     if (cachedProfileRef.current === null) {
       await prefetchProfile();
     }
@@ -106,20 +108,14 @@ export default function VapiAssistant() {
 
     async function init() {
       try {
-        // 1. Import TensorFlow and speech-commands
         const tf = await import("@tensorflow/tfjs");
         await tf.ready();
-        console.log("✅ TensorFlow.js loaded.");
 
         const speechCommands = await import("@tensorflow-models/speech-commands");
-        console.log("✅ Speech commands loaded.");
 
-        // 2. Initialize Vapi
         const vapi = new Vapi(PUBLIC_API_KEY);
         vapiRef.current = vapi;
-        console.log("✅ Vapi instance created.");
 
-        // 3. Load wake word model
         const base = new URL(MODEL_URL, window.location.href).href;
         const recognizer = speechCommands.create(
           "BROWSER_FFT",
@@ -129,13 +125,10 @@ export default function VapiAssistant() {
         );
         await recognizer.ensureModelLoaded();
         recognizerRef.current = recognizer;
-        console.log("✅ Wake word model loaded.");
 
         if (cancelled) return;
 
-        // 4. Set up Vapi event listeners
         vapi.on("call-start", () => {
-          console.log("📞 Call started.");
           isCallActiveRef.current = true;
           setStatus("call-active");
           if (recognizerRef.current?.isListening()) {
@@ -144,10 +137,10 @@ export default function VapiAssistant() {
         });
 
         vapi.on("call-end", () => {
-          console.log("🏁 Call ended.");
           isCallActiveRef.current = false;
+          setIsSpeaking(false);
+          setVolume(0);
           setStatus("ready");
-          // Restart listening after a short delay
           setTimeout(() => {
             if (!isCallActiveRef.current) {
               startListening();
@@ -155,9 +148,19 @@ export default function VapiAssistant() {
           }, 500);
         });
 
-        // Pre-fetch user profile so call starts instantly
-        prefetchProfile();
+        vapi.on("volume-level", (level: number) => {
+          setVolume(level);
+        });
 
+        vapi.on("speech-start", () => {
+          setIsSpeaking(true);
+        });
+
+        vapi.on("speech-end", () => {
+          setIsSpeaking(false);
+        });
+
+        prefetchProfile();
         setStatus("ready");
         startListening();
       } catch (error) {
@@ -186,37 +189,94 @@ export default function VapiAssistant() {
     }
   };
 
-  const statusConfig = {
-    loading: { text: "Chargement...", color: "bg-gray-400", pulse: true },
-    ready: { text: "Prêt. Dites 'Papote' !", color: "bg-emerald-400", pulse: false },
-    listening: { text: "Écoute...", color: "bg-blue-400", pulse: true },
-    "call-active": { text: "Appel en cours — cliquez pour terminer", color: "bg-red-500", pulse: true },
-    error: { text: errorMsg, color: "bg-red-400", pulse: false },
-  };
+  const isActive = status === "call-active";
+  const isDisabled = status === "loading" || status === "error";
 
-  const { text, color, pulse } = statusConfig[status];
+  const vizColor = isActive ? "#f87171" : "#34d399";
+
+  const statusLabel = {
+    loading: "Chargement...",
+    ready: "Dites « Papote » ou appuyez pour commencer",
+    listening: "Écoute...",
+    "call-active": isSpeaking
+      ? "Papote parle..."
+      : "Papote écoute...",
+    error: errorMsg,
+  }[status];
+
+  const orbGradient = isActive
+    ? "from-red-400 to-rose-600"
+    : status === "error"
+    ? "from-red-300 to-red-500"
+    : "from-emerald-400 to-teal-500";
 
   return (
-    <div className="flex flex-col items-center gap-8">
-      <button
-        onClick={handleButtonClick}
-        disabled={status === "loading" || status === "error"}
-        className={`w-20 h-20 rounded-full ${color} ${
-          pulse ? "animate-pulse" : ""
-        } shadow-lg hover:scale-105 transition-transform disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center`}
-      >
-        {status === "call-active" ? (
-          <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
-            <rect x="6" y="6" width="12" height="12" rx="2" />
-          </svg>
-        ) : (
-          <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5z" />
-            <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
-          </svg>
-        )}
-      </button>
-      <p className="text-gray-600 text-lg">{text}</p>
+    <div className="flex flex-col items-center gap-6 select-none">
+      {/* Visualizer + Orb container */}
+      <div className="relative" style={{ width: 320, height: 320 }}>
+        <AudioVisualizer
+          isActive={isActive}
+          volume={volume}
+          isSpeaking={isSpeaking}
+          color={vizColor}
+        />
+
+        {/* Glow behind the orb */}
+        <div
+          className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-40 h-40 rounded-full blur-2xl transition-opacity duration-500 ${
+            isActive ? "opacity-50" : "opacity-20"
+          }`}
+          style={{
+            background: isActive
+              ? "radial-gradient(circle, #f87171 0%, transparent 70%)"
+              : "radial-gradient(circle, #34d399 0%, transparent 70%)",
+          }}
+        />
+
+        {/* Main orb button */}
+        <button
+          onClick={handleButtonClick}
+          disabled={isDisabled}
+          className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2
+            w-36 h-36 rounded-full bg-gradient-to-br ${orbGradient}
+            shadow-[0_0_40px_rgba(0,0,0,0.15)] hover:shadow-[0_0_60px_rgba(0,0,0,0.2)]
+            hover:scale-105 active:scale-95
+            transition-all duration-300 ease-out
+            disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100
+            flex items-center justify-center
+            ${isActive ? "orb-pulse" : status === "ready" ? "orb-breathe" : ""}`}
+        >
+          {isActive ? (
+            /* Stop icon */
+            <svg className="w-12 h-12 text-white/90 drop-shadow-md" fill="currentColor" viewBox="0 0 24 24">
+              <rect x="6" y="6" width="12" height="12" rx="2" />
+            </svg>
+          ) : status === "loading" ? (
+            /* Spinner */
+            <svg className="w-10 h-10 text-white/80 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+          ) : (
+            /* Mic icon */
+            <svg className="w-12 h-12 text-white/90 drop-shadow-md" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
+              <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
+            </svg>
+          )}
+        </button>
+      </div>
+
+      {/* Status label */}
+      <p className={`text-sm font-medium tracking-wide transition-colors duration-300 ${
+        status === "error"
+          ? "text-red-400"
+          : isActive
+          ? "text-rose-300"
+          : "text-white/60"
+      }`}>
+        {statusLabel}
+      </p>
     </div>
   );
 }

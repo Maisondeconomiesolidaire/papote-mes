@@ -32,15 +32,21 @@ export default function HomeContent() {
   }, [isLoaded, router]);
 
   if (!ready) {
-    return <p className="text-gray-500 text-lg">Chargement...</p>;
+    return (
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-8 h-8 border-2 border-white/20 border-t-emerald-400 rounded-full animate-spin" />
+        <p className="text-white/40 text-sm">Chargement...</p>
+      </div>
+    );
   }
 
   return (
-    <>
-      <h1 className="mb-10 text-3xl font-bold text-gray-800">
-        Assistant Vocal Papote
+    <div className="flex flex-col items-center">
+      <h1 className="mb-2 text-4xl font-bold tracking-tight bg-gradient-to-r from-emerald-300 to-teal-200 bg-clip-text text-transparent">
+        Papote
       </h1>
+      <p className="mb-10 text-white/30 text-sm font-light">Assistant vocal</p>
       <VapiAssistant />
-    </>
+    </div>
   );
 }
