@@ -8,6 +8,8 @@ import { NextRequest, NextResponse } from "next/server";
 export async function POST(req: NextRequest) {
   const body = await req.json();
 
+  console.log("[vapi-tool] Full payload:", JSON.stringify(body, null, 2));
+
   const toolCall = body.message?.toolCallList?.[0];
 
   // Read the profile directly from the call metadata (pre-fetched before the call)

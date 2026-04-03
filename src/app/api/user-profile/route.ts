@@ -8,6 +8,7 @@ import { NextResponse } from "next/server";
  */
 export async function GET() {
   const { userId } = await auth();
+  console.log("[user-profile] Clerk userId:", userId);
   if (!userId) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
@@ -15,6 +16,8 @@ export async function GET() {
   const url = new URL(process.env.AIRTABLE_BASE_URL!);
   url.searchParams.set("filterByFormula", `{userId} = '${userId}'`);
   url.searchParams.set("maxRecords", "1");
+
+  console.log("[user-profile] Airtable query:", url.toString());
 
   const res = await fetch(url.toString(), {
     headers: {
@@ -29,6 +32,7 @@ export async function GET() {
 
   const data = await res.json();
   const record = data.records?.[0];
+  console.log("[user-profile] Found record:", record?.id, "fields.Prénom:", record?.fields?.["Prénom"], "fields.userId:", record?.fields?.userId);
 
   if (!record) {
     return NextResponse.json({ profile: null });
