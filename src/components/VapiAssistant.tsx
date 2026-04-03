@@ -108,10 +108,16 @@ export default function VapiAssistant() {
 
     console.log("🚀 Starting Vapi call with profile:", userProfile);
 
+    const now = new Date().toLocaleString("fr-FR", {
+      weekday: "long", day: "numeric", month: "long", year: "numeric",
+      hour: "2-digit", minute: "2-digit",
+    });
+
     vapiRef.current?.start(ASSISTANT_ID, {
       variableValues: {
         userProfile,
         userName: cachedFirstNameRef.current,
+        currentDateTime: now,
       },
       metadata: {
         clerkUserId: u?.id,
