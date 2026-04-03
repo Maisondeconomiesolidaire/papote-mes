@@ -9,7 +9,6 @@ export default function HomeContent() {
   const { isLoaded } = useUser();
   const router = useRouter();
   const [ready, setReady] = useState(false);
-  const [recordId, setRecordId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -23,7 +22,6 @@ export default function HomeContent() {
             router.replace("/onboarding");
             return;
           }
-          setRecordId(data.recordId);
         }
       } catch (err) {
         console.error("Error checking profile:", err);
@@ -42,7 +40,7 @@ export default function HomeContent() {
       <h1 className="mb-10 text-3xl font-bold text-gray-800">
         Assistant Vocal Papote
       </h1>
-      <VapiAssistant recordId={recordId} />
+      <VapiAssistant />
     </>
   );
 }

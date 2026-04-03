@@ -13,7 +13,7 @@ const CONFIDENCE_THRESHOLD = 0.90;
 
 type Status = "loading" | "ready" | "listening" | "call-active" | "error";
 
-export default function VapiAssistant({ recordId }: { recordId: string | null }) {
+export default function VapiAssistant() {
   const { user } = useUser();
   const [status, setStatus] = useState<Status>("loading");
   const [errorMsg, setErrorMsg] = useState("");
@@ -51,15 +51,7 @@ export default function VapiAssistant({ recordId }: { recordId: string | null })
           console.log("🎤 Wake word detected with confidence:", score);
           isCallActiveRef.current = true; // prevent duplicate triggers
           recognizer.stopListening();
-          const u = userRef.current;
-          vapiRef.current?.start(ASSISTANT_ID, {
-            metadata: {
-              clerkUserId: u?.id,
-              userName: u?.fullName ?? u?.firstName,
-              userEmail: u?.primaryEmailAddress?.emailAddress,
-              airtableRecordId: recordId,
-            },
-          });
+          startVapiCall();
         }
       },
       {
@@ -69,6 +61,28 @@ export default function VapiAssistant({ recordId }: { recordId: string | null })
         overlapFactor: 0.75,
       }
     );
+  }, []);
+
+  const startVapiCall = useCallback(async () => {
+    const u = userRef.current;
+    let userProfile = "";
+    try {
+      const res = await fetch("/api/user-profile");
+      if (res.ok) {
+        const data = await res.json();
+        userProfile = data.profile || "";
+      }
+    } catch (err) {
+      console.error("Failed to fetch user profile:", err);
+    }
+    vapiRef.current?.start(ASSISTANT_ID, {
+      metadata: {
+        clerkUserId: u?.id,
+        userName: u?.fullName ?? u?.firstName,
+        userEmail: u?.primaryEmailAddress?.emailAddress,
+        userProfile,
+      },
+    });
   }, []);
 
   useEffect(() => {
@@ -149,13 +163,7 @@ export default function VapiAssistant({ recordId }: { recordId: string | null })
     if (status === "call-active") {
       vapiRef.current?.stop();
     } else if (status === "ready") {
-      vapiRef.current?.start(ASSISTANT_ID, {
-        metadata: {
-          clerkUserId: user?.id,
-          userName: user?.fullName ?? user?.firstName,
-          userEmail: user?.primaryEmailAddress?.emailAddress,
-        },
-      });
+      startVapiCall();
     }
   };
 
