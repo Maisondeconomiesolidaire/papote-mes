@@ -76,12 +76,15 @@ export default function VapiAssistant() {
       console.error("Failed to fetch user profile:", err);
     }
 
+    console.log("🚀 Starting Vapi call with profile:", userProfile);
+
     vapiRef.current?.start(ASSISTANT_ID, {
+      variableValues: {
+        userProfile,
+        userName: u?.fullName ?? u?.firstName ?? "",
+      },
       metadata: {
         clerkUserId: u?.id,
-        userName: u?.fullName ?? u?.firstName,
-        userEmail: u?.primaryEmailAddress?.emailAddress,
-        userProfile,
       },
     });
   }, []);
