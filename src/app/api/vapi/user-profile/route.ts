@@ -1,39 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
 
 /**
- * Vapi tool endpoint: fetches a user's profile from Airtable by Clerk userId.
+ * Vapi tool endpoint: fetches a user's profile from Airtable by record ID.
  * Called by the Vapi assistant as a server-side function/tool.
  *
- * Vapi sends: { message: { call: { assistantOverrides: { metadata: { clerkUserId } } }, toolCallList: [{ id, function: { name, arguments } }] } }
+ * The recordId is passed via call metadata (airtableRecordId) or tool arguments.
  */
 export async function POST(req: NextRequest) {
   const body = await req.json();
 
-  // Extract userId from tool arguments or call metadata
   const toolCall = body.message?.toolCallList?.[0];
   const toolArgs = toolCall?.function?.arguments
     ? JSON.parse(toolCall.function.arguments)
     : {};
-  const userId =
-    toolArgs.userId || body.message?.call?.assistantOverrides?.metadata?.clerkUserId;
+  const recordId =
+    toolArgs.recordId || body.message?.call?.assistantOverrides?.metadata?.airtableRecordId;
 
-  if (!userId) {
+  if (!recordId) {
     return NextResponse.json({
       results: [
         {
           toolCallId: toolCall?.id,
-          result: "Erreur : identifiant utilisateur manquant.",
+          result: "Erreur : identifiant de record manquant.",
         },
       ],
     });
   }
 
-  // Query Airtable with filterByFormula to find the record matching userId
-  const url = new URL(process.env.AIRTABLE_BASE_URL!);
-  url.searchParams.set("filterByFormula", `{userId} = '${userId}'`);
-  url.searchParams.set("maxRecords", "1");
+  // Fetch the record directly by ID
+  const url = `${process.env.AIRTABLE_BASE_URL!}/${encodeURIComponent(recordId)}`;
 
-  const res = await fetch(url.toString(), {
+  const res = await fetch(url, {
     headers: {
       Authorization: `Bearer ${process.env.AIRTABLE_API_KEY!}`,
     },
@@ -51,10 +48,9 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const data = await res.json();
-  const record = data.records?.[0];
+  const record = await res.json();
 
-  if (!record) {
+  if (!record?.fields) {
     return NextResponse.json({
       results: [
         {

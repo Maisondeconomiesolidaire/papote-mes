@@ -13,7 +13,7 @@ const CONFIDENCE_THRESHOLD = 0.90;
 
 type Status = "loading" | "ready" | "listening" | "call-active" | "error";
 
-export default function VapiAssistant() {
+export default function VapiAssistant({ recordId }: { recordId: string | null }) {
   const { user } = useUser();
   const [status, setStatus] = useState<Status>("loading");
   const [errorMsg, setErrorMsg] = useState("");
@@ -57,6 +57,7 @@ export default function VapiAssistant() {
               clerkUserId: u?.id,
               userName: u?.fullName ?? u?.firstName,
               userEmail: u?.primaryEmailAddress?.emailAddress,
+              airtableRecordId: recordId,
             },
           });
         }

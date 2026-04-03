@@ -1,5 +1,5 @@
 import { UserButton } from "@clerk/nextjs";
-import VapiAssistant from "@/components/VapiAssistant";
+import HomeContent from "@/components/HomeContent";
 
 export default function Home() {
   return (
@@ -7,10 +7,7 @@ export default function Home() {
       <div className="absolute top-4 right-4">
         <UserButton />
       </div>
-      <h1 className="mb-10 text-3xl font-bold text-gray-800">
-        Assistant Vocal Papote
-      </h1>
-      <VapiAssistant />
+      <HomeContent />
     </main>
   );
 }

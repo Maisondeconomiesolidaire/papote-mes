@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 
@@ -93,9 +93,10 @@ const STEPS = [
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const { user } = useUser();
+  const { user, isLoaded } = useUser();
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const [checking, setChecking] = useState(true);
   const [formData, setFormData] = useState<FormData>({
     prenom: "",
     aidants: "",
@@ -108,6 +109,28 @@ export default function OnboardingPage() {
     animaux: "",
     evenements: "",
   });
+
+  // Check if user already has an Airtable record — if so, skip onboarding
+  useEffect(() => {
+    if (!isLoaded) return;
+
+    async function checkExisting() {
+      try {
+        const res = await fetch("/api/onboarding/check");
+        if (res.ok) {
+          const { exists } = await res.json();
+          if (exists) {
+            router.replace("/");
+            return;
+          }
+        }
+      } catch (err) {
+        console.error("Error checking onboarding status:", err);
+      }
+      setChecking(false);
+    }
+    checkExisting();
+  }, [isLoaded, router]);
 
   const current = STEPS[step];
   const isLast = step === STEPS.length - 1;
@@ -140,6 +163,14 @@ export default function OnboardingPage() {
       setStep((s) => s + 1);
     }
   };
+
+  if (checking) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+        <p className="text-gray-500 text-lg">Vérification du profil...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
