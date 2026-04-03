@@ -84,13 +84,26 @@ export default function VapiAssistant() {
     }
   }, []);
 
+  const refreshProfile = useCallback(async () => {
+    try {
+      const res = await fetch("/api/user-profile");
+      if (res.ok) {
+        const data = await res.json();
+        cachedProfileRef.current = data.profile || "";
+        cachedRecordIdRef.current = data.recordId || null;
+        cachedFirstNameRef.current = data.firstName || "";
+      }
+    } catch (err) {
+      console.error("Failed to refresh user profile:", err);
+    }
+  }, []);
+
   const startVapiCall = useCallback(async () => {
     const u = userRef.current;
     setStatus("connecting");
     stopListening();
-    if (cachedProfileRef.current === null) {
-      await prefetchProfile();
-    }
+    // Always refresh profile to get latest Resume/conversation history
+    await refreshProfile();
     const userProfile = cachedProfileRef.current || "";
 
     console.log("🚀 Starting Vapi call with profile:", userProfile);

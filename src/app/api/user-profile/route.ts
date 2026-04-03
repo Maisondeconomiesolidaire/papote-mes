@@ -40,6 +40,7 @@ export async function GET() {
   }
 
   const fields = record.fields;
+  const resume = fields["Resume"] || "";
   const profile = [
     `Prénom : ${fields["Prénom"] || "Non renseigné"}`,
     `Aidants : ${fields["Aidants de huguette"] || "Non renseigné"}`,
@@ -51,7 +52,8 @@ export async function GET() {
     `Sujets à mettre en avant : ${fields["Topics à mettre en avant"] || "Non renseigné"}`,
     `Animaux de compagnie : ${fields["Animaux de compagnie"] || "Non renseigné"}`,
     `Événements : ${fields["Evenements"] || "Non renseigné"}`,
-  ].join("\n");
+    resume ? `\nHistorique des conversations :\n${resume}` : "",
+  ].filter(Boolean).join("\n");
 
   const firstName = fields["Prénom"] || "";
 
