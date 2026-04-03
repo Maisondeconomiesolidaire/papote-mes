@@ -75,16 +75,29 @@ export default function VapiAssistant() {
     } catch (err) {
       console.error("Failed to fetch user profile:", err);
     }
-    vapiRef.current?.start(ASSISTANT_ID, {
+
+    const overrides: Record<string, unknown> = {
       metadata: {
         clerkUserId: u?.id,
         userName: u?.fullName ?? u?.firstName,
         userEmail: u?.primaryEmailAddress?.emailAddress,
       },
-      variableValues: {
-        userProfile,
-      },
-    });
+    };
+
+    // Inject profile into first message if available
+    if (userProfile) {
+      overrides.firstMessage = `Bonjour ${u?.firstName || ""} ! Je suis Papote, comment vas-tu aujourd'hui ?`;
+      overrides.model = {
+        messages: [
+          {
+            role: "system",
+            content: `Voici les informations personnelles de l'utilisateur. Utilise-les pour personnaliser la conversation :\n${userProfile}`,
+          },
+        ],
+      };
+    }
+
+    vapiRef.current?.start(ASSISTANT_ID, overrides);
   }, []);
 
   useEffect(() => {
