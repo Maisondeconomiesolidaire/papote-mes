@@ -49,3 +49,19 @@ body {
 .orb-pulse {
   animation: orb-pulse 1.5s ease-in-out infinite;
 }
+
+/* Orb connecting animation (waiting for call to start) */
+@keyframes orb-connecting {
+  0%, 100% {
+    box-shadow: 0 0 30px rgba(251, 191, 36, 0.3), 0 0 60px rgba(251, 191, 36, 0.1);
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    box-shadow: 0 0 50px rgba(251, 191, 36, 0.5), 0 0 100px rgba(251, 191, 36, 0.15);
+    transform: translate(-50%, -50%) scale(1.05);
+  }
+}
+
+.orb-connecting {
+  animation: orb-connecting 1s ease-in-out infinite;
+}

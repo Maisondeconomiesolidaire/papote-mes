@@ -12,7 +12,7 @@ const WAKE_WORD = "Papote";
 const MODEL_URL = "/teachable/";
 const CONFIDENCE_THRESHOLD = 0.85;
 
-type Status = "loading" | "ready" | "listening" | "call-active" | "error";
+type Status = "loading" | "ready" | "listening" | "connecting" | "call-active" | "error";
 
 export default function VapiAssistant() {
   const { user } = useUser();
@@ -84,6 +84,8 @@ export default function VapiAssistant() {
 
   const startVapiCall = useCallback(async () => {
     const u = userRef.current;
+    setStatus("connecting");
+    stopListening();
     if (cachedProfileRef.current === null) {
       await prefetchProfile();
     }
@@ -187,17 +189,20 @@ export default function VapiAssistant() {
     } else if (status === "ready") {
       startVapiCall();
     }
+    // Ignore clicks during "connecting" or other states
   };
 
   const isActive = status === "call-active";
-  const isDisabled = status === "loading" || status === "error";
+  const isConnecting = status === "connecting";
+  const isDisabled = status === "loading" || status === "error" || isConnecting;
 
-  const vizColor = isActive ? "#f87171" : "#34d399";
+  const vizColor = isActive ? "#f87171" : isConnecting ? "#fbbf24" : "#34d399";
 
   const statusLabel = {
     loading: "Chargement...",
     ready: "Dites « Papote » ou appuyez pour commencer",
     listening: "Écoute...",
+    connecting: "Connexion en cours...",
     "call-active": isSpeaking
       ? "Papote parle..."
       : "Papote écoute...",
@@ -206,6 +211,8 @@ export default function VapiAssistant() {
 
   const orbGradient = isActive
     ? "from-red-400 to-rose-600"
+    : isConnecting
+    ? "from-amber-400 to-yellow-500"
     : status === "error"
     ? "from-red-300 to-red-500"
     : "from-emerald-400 to-teal-500";
@@ -244,14 +251,14 @@ export default function VapiAssistant() {
             transition-all duration-300 ease-out
             disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100
             flex items-center justify-center
-            ${isActive ? "orb-pulse" : status === "ready" ? "orb-breathe" : ""}`}
+            ${isActive ? "orb-pulse" : isConnecting ? "orb-connecting" : status === "ready" ? "orb-breathe" : ""}`}
         >
           {isActive ? (
             /* Stop icon */
             <svg className="w-12 h-12 text-white/90 drop-shadow-md" fill="currentColor" viewBox="0 0 24 24">
               <rect x="6" y="6" width="12" height="12" rx="2" />
             </svg>
-          ) : status === "loading" ? (
+          ) : (status === "loading" || isConnecting) ? (
             /* Spinner */
             <svg className="w-10 h-10 text-white/80 animate-spin" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
@@ -271,6 +278,8 @@ export default function VapiAssistant() {
       <p className={`text-sm font-medium tracking-wide transition-colors duration-300 ${
         status === "error"
           ? "text-red-400"
+          : isConnecting
+          ? "text-amber-300"
           : isActive
           ? "text-rose-300"
           : "text-white/60"
