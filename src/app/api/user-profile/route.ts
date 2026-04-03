@@ -36,7 +36,7 @@ export async function GET() {
   console.log("[user-profile] Found record:", record?.id, "fields.Prénom:", record?.fields?.["Prénom"], "fields.userId:", record?.fields?.userId);
 
   if (!record) {
-    return NextResponse.json({ profile: null });
+    return NextResponse.json({ profile: null, recordId: null });
   }
 
   const fields = record.fields;
@@ -53,5 +53,5 @@ export async function GET() {
     `Événements : ${fields["Evenements"] || "Non renseigné"}`,
   ].join("\n");
 
-  return NextResponse.json({ profile });
+  return NextResponse.json({ profile, recordId: record.id });
 }

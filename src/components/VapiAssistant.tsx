@@ -23,6 +23,7 @@ export default function VapiAssistant() {
   const userRef = useRef(user);
   userRef.current = user;
   const cachedProfileRef = useRef<string | null>(null);
+  const cachedRecordIdRef = useRef<string | null>(null);
 
   const stopListening = useCallback(() => {
     const recognizer = recognizerRef.current;
@@ -71,6 +72,7 @@ export default function VapiAssistant() {
       if (res.ok) {
         const data = await res.json();
         cachedProfileRef.current = data.profile || "";
+        cachedRecordIdRef.current = data.recordId || null;
       }
     } catch (err) {
       console.error("Failed to prefetch user profile:", err);
@@ -94,6 +96,7 @@ export default function VapiAssistant() {
       },
       metadata: {
         clerkUserId: u?.id,
+        airtableRecordId: cachedRecordIdRef.current,
       },
     });
   }, [prefetchProfile]);
