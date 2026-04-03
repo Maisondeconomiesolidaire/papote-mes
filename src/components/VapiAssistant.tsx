@@ -80,6 +80,8 @@ export default function VapiAssistant() {
         clerkUserId: u?.id,
         userName: u?.fullName ?? u?.firstName,
         userEmail: u?.primaryEmailAddress?.emailAddress,
+      },
+      variableValues: {
         userProfile,
       },
     });
