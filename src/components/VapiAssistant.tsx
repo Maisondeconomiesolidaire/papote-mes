@@ -9,7 +9,7 @@ const PUBLIC_API_KEY = process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY!;
 
 const WAKE_WORD = "Papote";
 const MODEL_URL = "/teachable/";
-const CONFIDENCE_THRESHOLD = 0.90;
+const CONFIDENCE_THRESHOLD = 0.85;
 
 type Status = "loading" | "ready" | "listening" | "call-active" | "error";
 
@@ -22,6 +22,7 @@ export default function VapiAssistant() {
   const isCallActiveRef = useRef(false);
   const userRef = useRef(user);
   userRef.current = user;
+  const cachedProfileRef = useRef<string | null>(null);
 
   const stopListening = useCallback(() => {
     const recognizer = recognizerRef.current;
@@ -56,25 +57,33 @@ export default function VapiAssistant() {
       },
       {
         includeSpectrogram: false,
-        probabilityThreshold: 0.75,
+        probabilityThreshold: 0.60,
         invokeCallbackOnNoiseAndUnknown: false,
-        overlapFactor: 0.75,
+        overlapFactor: 0.90,
       }
     );
   }, []);
 
-  const startVapiCall = useCallback(async () => {
-    const u = userRef.current;
-    let userProfile = "";
+  const prefetchProfile = useCallback(async () => {
+    if (cachedProfileRef.current !== null) return;
     try {
       const res = await fetch("/api/user-profile");
       if (res.ok) {
         const data = await res.json();
-        userProfile = data.profile || "";
+        cachedProfileRef.current = data.profile || "";
       }
     } catch (err) {
-      console.error("Failed to fetch user profile:", err);
+      console.error("Failed to prefetch user profile:", err);
     }
+  }, []);
+
+  const startVapiCall = useCallback(async () => {
+    const u = userRef.current;
+    // Use cached profile or fetch if not ready
+    if (cachedProfileRef.current === null) {
+      await prefetchProfile();
+    }
+    const userProfile = cachedProfileRef.current || "";
 
     console.log("🚀 Starting Vapi call with profile:", userProfile);
 
@@ -87,7 +96,7 @@ export default function VapiAssistant() {
         clerkUserId: u?.id,
       },
     });
-  }, []);
+  }, [prefetchProfile]);
 
   useEffect(() => {
     let cancelled = false;
@@ -142,6 +151,9 @@ export default function VapiAssistant() {
             }
           }, 500);
         });
+
+        // Pre-fetch user profile so call starts instantly
+        prefetchProfile();
 
         setStatus("ready");
         startListening();

@@ -193,44 +193,60 @@ export default function OnboardingPage() {
         <h2 className="mb-2 text-2xl font-bold text-gray-800">{current.label}</h2>
         <p className="mb-6 text-gray-500">{current.description}</p>
 
-        {current.multiline ? (
-          <textarea
-            className="w-full rounded-lg border border-gray-300 p-3 text-gray-700 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-            rows={5}
-            placeholder={current.placeholder}
-            value={value}
-            onChange={(e) =>
-              setFormData((prev) => ({ ...prev, [current.key]: e.target.value }))
-            }
-          />
-        ) : (
-          <input
-            type="text"
-            className="w-full rounded-lg border border-gray-300 p-3 text-gray-700 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-            placeholder={current.placeholder}
-            value={value}
-            onChange={(e) =>
-              setFormData((prev) => ({ ...prev, [current.key]: e.target.value }))
-            }
-          />
-        )}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!submitting && value.trim()) handleNext();
+          }}
+        >
+          {current.multiline ? (
+            <textarea
+              autoFocus
+              className="w-full rounded-lg border border-gray-300 p-3 text-gray-700 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              rows={5}
+              placeholder={current.placeholder}
+              value={value}
+              onChange={(e) =>
+                setFormData((prev) => ({ ...prev, [current.key]: e.target.value }))
+              }
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  if (value.trim()) handleNext();
+                }
+              }}
+            />
+          ) : (
+            <input
+              autoFocus
+              type="text"
+              className="w-full rounded-lg border border-gray-300 p-3 text-gray-700 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              placeholder={current.placeholder}
+              value={value}
+              onChange={(e) =>
+                setFormData((prev) => ({ ...prev, [current.key]: e.target.value }))
+              }
+            />
+          )}
 
-        <div className="mt-6 flex justify-between">
-          <button
-            onClick={() => setStep((s) => Math.max(0, s - 1))}
-            disabled={step === 0}
-            className="rounded-lg px-5 py-2 text-gray-500 hover:bg-gray-100 disabled:invisible"
-          >
-            Retour
-          </button>
-          <button
-            onClick={handleNext}
-            disabled={submitting || !value.trim()}
-            className="rounded-lg bg-emerald-500 px-6 py-2 font-medium text-white hover:bg-emerald-600 disabled:opacity-50"
-          >
-            {submitting ? "Envoi..." : isLast ? "Terminer" : "Suivant"}
-          </button>
-        </div>
+          <div className="mt-6 flex justify-between">
+            <button
+              type="button"
+              onClick={() => setStep((s) => Math.max(0, s - 1))}
+              disabled={step === 0}
+              className="rounded-lg px-5 py-2 text-gray-500 hover:bg-gray-100 disabled:invisible"
+            >
+              Retour
+            </button>
+            <button
+              type="submit"
+              disabled={submitting || !value.trim()}
+              className="rounded-lg bg-emerald-500 px-6 py-2 font-medium text-white hover:bg-emerald-600 disabled:opacity-50"
+            >
+              {submitting ? "Envoi..." : isLast ? "Terminer" : "Suivant"}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
