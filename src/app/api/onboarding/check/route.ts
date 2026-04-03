@@ -20,6 +20,7 @@ export async function GET() {
     headers: {
       Authorization: `Bearer ${process.env.AIRTABLE_API_KEY!}`,
     },
+    cache: "no-store",
   });
 
   if (!res.ok) {
