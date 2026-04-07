@@ -3,6 +3,10 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useUser } from "@clerk/nextjs";
 import Vapi from "@vapi-ai/web";
+import type {
+  SpeechCommandRecognizer,
+  SpeechCommandRecognizerResult,
+} from "@tensorflow-models/speech-commands";
 import AudioVisualizer from "./AudioVisualizer";
 
 const ASSISTANT_ID = process.env.NEXT_PUBLIC_VAPI_ASSISTANT_ID!;
@@ -14,6 +18,46 @@ const CONFIDENCE_THRESHOLD = 0.85;
 
 type Status = "loading" | "ready" | "listening" | "connecting" | "call-active" | "error";
 
+type VapiConversationMessage = {
+  role?: string;
+  message?: string;
+};
+
+type VapiMessage =
+  | {
+      type: "conversation-update";
+      messages?: VapiConversationMessage[];
+    }
+  | {
+      type: "transcript" | "transcript[transcriptType='final']";
+      role: "assistant" | "user";
+      transcriptType: "partial" | "final";
+      transcript: string;
+    }
+  | {
+      type?: string;
+      [key: string]: unknown;
+    };
+
+function formatConversationHistory(messages: VapiConversationMessage[]) {
+  return messages
+    .filter((entry) => {
+      const content = entry.message?.trim();
+      const role = entry.role?.toLowerCase();
+      return Boolean(
+        content &&
+          role &&
+          (role.includes("user") || role.includes("assistant") || role.includes("bot"))
+      );
+    })
+    .map((entry) => {
+      const role = entry.role?.toLowerCase() || "";
+      const speaker = role.includes("user") ? "Utilisateur" : "Papote";
+      return `${speaker}: ${entry.message?.trim()}`;
+    })
+    .join("\n\n");
+}
+
 export default function VapiAssistant() {
   const { user } = useUser();
   const [status, setStatus] = useState<Status>("loading");
@@ -21,13 +65,18 @@ export default function VapiAssistant() {
   const [volume, setVolume] = useState(0);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const vapiRef = useRef<Vapi | null>(null);
-  const recognizerRef = useRef<any>(null);
+  const recognizerRef = useRef<SpeechCommandRecognizer | null>(null);
   const isCallActiveRef = useRef(false);
   const userRef = useRef(user);
   userRef.current = user;
   const cachedProfileRef = useRef<string | null>(null);
   const cachedRecordIdRef = useRef<string | null>(null);
   const cachedFirstNameRef = useRef<string>("");
+  const conversationRecordIdRef = useRef<string | null>(null);
+  const liveConversationRef = useRef("");
+  const elapsedSecondsRef = useRef(0);
+  const durationIntervalRef = useRef<number | null>(null);
+  const resumeSyncTimeoutRef = useRef<number | null>(null);
 
   const stopListening = useCallback(() => {
     const recognizer = recognizerRef.current;
@@ -35,38 +84,6 @@ export default function VapiAssistant() {
       recognizer.stopListening();
       console.log("🙉 Wake word listener stopped.");
     }
-  }, []);
-
-  const startListening = useCallback(() => {
-    const recognizer = recognizerRef.current;
-    if (isCallActiveRef.current || recognizer?.isListening()) return;
-
-    recognizer.listen(
-      (result: { scores: Float32Array }) => {
-        const classLabels: string[] = recognizer.wordLabels();
-        const wakeWordIndex = classLabels.indexOf(WAKE_WORD);
-        if (wakeWordIndex === -1) {
-          console.error(`❌ Wake word "${WAKE_WORD}" not found. Available:`, classLabels);
-          recognizer.stopListening();
-          setStatus("error");
-          setErrorMsg("Erreur de configuration du mot-clé.");
-          return;
-        }
-        const score = result.scores[wakeWordIndex];
-        if (score > CONFIDENCE_THRESHOLD && !isCallActiveRef.current) {
-          console.log("🎤 Wake word detected with confidence:", score);
-          isCallActiveRef.current = true;
-          recognizer.stopListening();
-          startVapiCall();
-        }
-      },
-      {
-        includeSpectrogram: false,
-        probabilityThreshold: 0.60,
-        invokeCallbackOnNoiseAndUnknown: false,
-        overlapFactor: 0.90,
-      }
-    );
   }, []);
 
   const prefetchProfile = useCallback(async () => {
@@ -98,17 +115,159 @@ export default function VapiAssistant() {
     }
   }, []);
 
+  const syncConversationRecord = useCallback(
+    async (updates: { Resume?: string; Duree?: number }) => {
+      const recordId = conversationRecordIdRef.current;
+      if (!recordId) return;
+
+      try {
+        const res = await fetch(`/api/conversations/${recordId}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(updates),
+        });
+
+        if (!res.ok) {
+          console.error("Failed to sync conversation record:", await res.text());
+        }
+      } catch (error) {
+        console.error("Failed to sync conversation record:", error);
+      }
+    },
+    []
+  );
+
+  const flushConversationResume = useCallback(
+    async (resume: string) => {
+      if (!conversationRecordIdRef.current) return;
+      await syncConversationRecord({ Resume: resume });
+    },
+    [syncConversationRecord]
+  );
+
+  const scheduleConversationResumeSync = useCallback(
+    (resume: string, immediate = false) => {
+      liveConversationRef.current = resume;
+
+      if (resumeSyncTimeoutRef.current) {
+        clearTimeout(resumeSyncTimeoutRef.current);
+        resumeSyncTimeoutRef.current = null;
+      }
+
+      if (!conversationRecordIdRef.current) return;
+
+      if (immediate) {
+        void flushConversationResume(resume);
+        return;
+      }
+
+      resumeSyncTimeoutRef.current = window.setTimeout(() => {
+        resumeSyncTimeoutRef.current = null;
+        void flushConversationResume(liveConversationRef.current);
+      }, 300);
+    },
+    [flushConversationResume]
+  );
+
+  const clearDurationTracking = useCallback(() => {
+    if (durationIntervalRef.current) {
+      clearInterval(durationIntervalRef.current);
+      durationIntervalRef.current = null;
+    }
+  }, []);
+
+  const startDurationTracking = useCallback(() => {
+    clearDurationTracking();
+    elapsedSecondsRef.current = 0;
+
+    durationIntervalRef.current = window.setInterval(() => {
+      elapsedSecondsRef.current += 1;
+
+      if (conversationRecordIdRef.current) {
+        void syncConversationRecord({ Duree: elapsedSecondsRef.current });
+      }
+    }, 1000);
+  }, [clearDurationTracking, syncConversationRecord]);
+
+  const createConversationRecord = useCallback(async () => {
+    if (conversationRecordIdRef.current) return conversationRecordIdRef.current;
+
+    try {
+      const res = await fetch("/api/conversations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          Resume: liveConversationRef.current,
+          Duree: elapsedSecondsRef.current,
+        }),
+      });
+
+      if (!res.ok) {
+        console.error("Failed to create conversation record:", await res.text());
+        return null;
+      }
+
+      const data = await res.json();
+      conversationRecordIdRef.current = data.recordId;
+
+      if (liveConversationRef.current || elapsedSecondsRef.current > 0) {
+        await syncConversationRecord({
+          Resume: liveConversationRef.current,
+          Duree: elapsedSecondsRef.current,
+        });
+      }
+
+      return data.recordId as string;
+    } catch (error) {
+      console.error("Failed to create conversation record:", error);
+      return null;
+    }
+  }, [syncConversationRecord]);
+
+  const finalizeConversationTracking = useCallback(async () => {
+    clearDurationTracking();
+
+    if (resumeSyncTimeoutRef.current) {
+      clearTimeout(resumeSyncTimeoutRef.current);
+      resumeSyncTimeoutRef.current = null;
+    }
+
+    if (conversationRecordIdRef.current) {
+      await syncConversationRecord({
+        Resume: liveConversationRef.current,
+        Duree: elapsedSecondsRef.current,
+      });
+    }
+
+    conversationRecordIdRef.current = null;
+    liveConversationRef.current = "";
+    elapsedSecondsRef.current = 0;
+  }, [clearDurationTracking, syncConversationRecord]);
+
   const startVapiCall = useCallback(async () => {
     const u = userRef.current;
     setStatus("connecting");
     stopListening();
+    liveConversationRef.current = "";
+    elapsedSecondsRef.current = 0;
     // Always refresh profile to get latest Resume/conversation history
     await refreshProfile();
     const userProfile = cachedProfileRef.current || "";
 
     console.log("🚀 Starting Vapi call with profile:", userProfile);
 
-    const now = new Date().toLocaleString("fr-FR", {
+    const now = new Date();
+    const currentDate = now.toLocaleDateString("fr-FR", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+    const currentDateTime = now.toLocaleString("fr-FR", {
       weekday: "long", day: "numeric", month: "long", year: "numeric",
       hour: "2-digit", minute: "2-digit",
     });
@@ -117,7 +276,8 @@ export default function VapiAssistant() {
       variableValues: {
         userProfile,
         userName: cachedFirstNameRef.current,
-        currentDateTime: now,
+        date: currentDate,
+        currentDateTime,
       },
       metadata: {
         clerkUserId: u?.id,
@@ -127,7 +287,39 @@ export default function VapiAssistant() {
         url: `${window.location.origin}/api/vapi/webhook`,
       },
     });
-  }, [prefetchProfile]);
+  }, [refreshProfile, stopListening]);
+
+  const startListening = useCallback(() => {
+    const recognizer = recognizerRef.current;
+    if (isCallActiveRef.current || recognizer?.isListening() !== false) return;
+
+    recognizer.listen(
+      async (result: SpeechCommandRecognizerResult) => {
+        const classLabels = recognizer.wordLabels();
+        const wakeWordIndex = classLabels.indexOf(WAKE_WORD);
+        if (wakeWordIndex === -1) {
+          console.error(`❌ Wake word "${WAKE_WORD}" not found. Available:`, classLabels);
+          recognizer.stopListening();
+          setStatus("error");
+          setErrorMsg("Erreur de configuration du mot-clé.");
+          return;
+        }
+        const score = Number(result.scores[wakeWordIndex]);
+        if (score > CONFIDENCE_THRESHOLD && !isCallActiveRef.current) {
+          console.log("🎤 Wake word detected with confidence:", score);
+          isCallActiveRef.current = true;
+          recognizer.stopListening();
+          startVapiCall();
+        }
+      },
+      {
+        includeSpectrogram: false,
+        probabilityThreshold: 0.60,
+        invokeCallbackOnNoiseAndUnknown: false,
+        overlapFactor: 0.90,
+      }
+    );
+  }, [startVapiCall]);
 
   useEffect(() => {
     let cancelled = false;
@@ -160,12 +352,15 @@ export default function VapiAssistant() {
           if (recognizerRef.current?.isListening()) {
             recognizerRef.current.stopListening();
           }
+          startDurationTracking();
+          void createConversationRecord();
         });
 
         vapi.on("call-end", () => {
           isCallActiveRef.current = false;
           setIsSpeaking(false);
           setVolume(0);
+          void finalizeConversationTracking();
           setStatus("ready");
           setTimeout(() => {
             if (!isCallActiveRef.current) {
@@ -186,6 +381,24 @@ export default function VapiAssistant() {
           setIsSpeaking(false);
         });
 
+        vapi.on("message", (message: VapiMessage) => {
+          if (message.type === "conversation-update" && Array.isArray(message.messages)) {
+            const formattedConversation = formatConversationHistory(message.messages);
+            scheduleConversationResumeSync(formattedConversation);
+          }
+        });
+
+        vapi.on("call-start-failed", () => {
+          isCallActiveRef.current = false;
+          void finalizeConversationTracking();
+          setStatus("error");
+          setErrorMsg("La connexion de l'appel a échoué.");
+        });
+
+        vapi.on("error", (error) => {
+          console.error("❌ Vapi error:", error);
+        });
+
         prefetchProfile();
         setStatus("ready");
         startListening();
@@ -203,9 +416,22 @@ export default function VapiAssistant() {
     return () => {
       cancelled = true;
       stopListening();
+      clearDurationTracking();
+      if (resumeSyncTimeoutRef.current) {
+        clearTimeout(resumeSyncTimeoutRef.current);
+      }
       vapiRef.current?.stop();
     };
-  }, [startListening, stopListening]);
+  }, [
+    clearDurationTracking,
+    createConversationRecord,
+    finalizeConversationTracking,
+    prefetchProfile,
+    scheduleConversationResumeSync,
+    startDurationTracking,
+    startListening,
+    stopListening,
+  ]);
 
   const handleButtonClick = () => {
     if (status === "call-active") {
